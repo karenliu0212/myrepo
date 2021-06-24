@@ -294,6 +294,14 @@ gain_per_hour = gain / hours
 5. Cumulative and running means - R provides functions for running sums, products, mins, and maxes: cumsum(), cumprod(), cummin(), cummax(); and dplyr provides cummean() for cumulative means.
 6. Logical comparisons
 7. Ranking - min_rank(), row_number(), dense_rank(), percent_rank(), cume_dist(),
+row_number(): equivalent to rank(ties.method = "first")
+min_rank(): equivalent to rank(ties.method = "min")
+dense_rank(): like min_rank(), but with no gaps between ranks
+percent_rank(): a number between 0 and 1 computed by rescaling min_rank to [0, 1]
+cume_dist(): a cumulative distribution function. Proportion of all values less than or equal to the current rank.
+ntile(): a rough rank, which breaks the input vector into n buckets. The size of the buckets may differ by up to one, larger buckets have lower rank.
+
+
 
 ```{r}
 library(dplyr)
@@ -432,6 +440,157 @@ mutate(prop_delay = arr_delay / sum(arr_delay)) %>%
 select(year:day, dest, arr_delay, prop_delay)
 ```
 
+#Exploratory Data Analysis
+##5.1 Introduction - the mindset of EDA
+1. generate questions
+2. visualize, transform and model
+3. generate new questions/refine
+
+##5.2 Variation 
+Every variable has its own pattern of variation, which can reveal interesting information. The best way to understand that pattern is to visualize the distribution of variables’ values.
+
+Visualize Distribution:
+- Bar Chart for categorical variables
+- Histogram for continuous variables - *binwidth is used to set the width of the intervals*
+```{r}
+ggplot(data = diamonds) +
+geom_histogram(mapping = aes(x = carat), binwidth = 0.5)
+
+smaller <- diamonds %>%
+  filter(carat < 3)
+ggplot(data = smaller, mapping = aes(x = carat)) +
+  geom_histogram(binwidth = 0.1)
+```
+Use freqpoly to overlay multiple histograms
+```{r}
+ggplot(data = smaller, mapping = aes(x = carat, color = cut)) +
+geom_freqpoly(binwidth = 0.1)
+```
+
+Typical Values - most common values, show clusters
+Unusual Values - outliers or data entry errors, use coor_cartesian() to zoom in to small values
+
+```{r}
+ggplot(diamonds) +
+  geom_histogram(mapping = aes(x = y), binwidth = 0.5) +
+  coord_cartesian(ylim = c(0, 50))
+```
+Deal with unusual values:
+1. remove the entire rows (not recommended)
+2. set the unusual values to missing
+itself() function has three arguments, the first specifies a logical vector, second is the value it takes if the test is TRUE, third is the value it takes if it is FALSE.
+```{r}
+diamonds2 <- diamonds %>%
+mutate(y = ifelse(y < 3 | y > 20, NA, y))
+ggplot(data = diamonds2, mapping = aes(x = x, y = y)) +
+  geom_point(na.rm = TRUE)
+```
+Understand what makes observations with missing values different from observations with recorded values
+```{r}
+nycflights13::flights %>%
+mutate(
+  cancelled = is.na(dep_time),
+  sched_hour = sched_dep_time %/% 100,
+  sched_min = sched_dep_time %% 100,
+  sched_dep_time = sched_hour + sched_min / 60
+) %>%
+ggplot(mapping = aes(sched_dep_time)) +
+  geom_freqpoly(
+    mapping = aes(color = cancelled),
+    binwidth = 1/4
+)+
+  coord_cartesian(ylim=c(0,500))
+```
+
+##5.3 Covariation
+Covariation is the tendency for the values of two or more variables to vary together in a related way.
+
+5.3.1 A categorical and continuous variable 
+1. display density using freqpoly
+```{r}
+ggplot(
+data = diamonds,
+mapping = aes(x = price, y = ..density..)
+) +
+geom_freqpoly(mapping = aes(color = cut), binwidth = 500)
+```
+2. use boxplot and reorder() function to make the trend easier to see (only applicable to categorical variables with no explicit order?reorder)
+```{r}
+ggplot(data = mpg) +
+geom_boxplot(
+mapping = aes(
+x = reorder(class, hwy, FUN = median),
+y = hwy
+)
+)
+```
+5.3.2 Two Categorical Variables
+need to count the number of observations for each combination.
+1. Use geom_count to map out the 
+```{r}
+ggplot(data = diamonds) +
+geom_count(mapping = aes(x = cut, y = color))
+```
+2. Use dplyr package to count and use geom_tile to map out
+
+```{r}
+diamonds %>%
+count(color, cut) %>%
+ggplot(mapping = aes(x = color, y = cut)) +
+geom_tile(mapping = aes(fill = n))
+```
+
+5.3.3  Two Continuous Variables
+use geom_point to plot scatterplot. 
+```{r}
+ggplot(data = diamonds) +
+geom_point(mapping = aes(x = carat, y = price))
+```
+1. use alpha to add transparency to avoid overplot due to large sample size
+```{r}
+ggplot(data = diamonds) +
+geom_point(
+mapping = aes(x = carat, y = price),
+alpha = 1 / 100
+)
+```
+2. use geom_bin2d and geom_hex to display 2D bins
+
+```{r}
+ggplot(data = smaller) +
+geom_bin2d(mapping = aes(x = carat, y = price))
+# install.packages("hexbin")
+ggplot(data = smaller) +
+geom_hex(mapping = aes(x = carat, y = price))
+```
+3. bin one variable so it acts like a categorical variable; use boxplots to display relationship between the categorical variable and another continuous variable
+```{r}
+# cut_width restricts the width of each bin to be the same, however each bin could contain drastically different values
+ggplot(data = smaller, mapping = aes(x = carat, y = price)) +
+  geom_boxplot(mapping = aes(group = cut_width(carat, 0.1)))
+# cut_number restricts the number each bin has to display the number distribution
+ggplot(data = smaller, mapping = aes(x = carat, y = price)) +
+  geom_boxplot(mapping = aes(group = cut_number(carat, 20)))
+```
+5.4 Patterns and Models
+If you think of variation as a phenomenon that creates uncertainty, covariation is a phenomenon that reduces it. 
+If the covariation is due to a causal relationship (a special case), then you can use the value of one variable to control the value of the second
+
+Model: remove strong relationships to discern the subtlties that remain. 
+
+```{r}
+library(modelr)
+mod <- lm(log(price) ~ log(carat), data = diamonds)
+diamonds2 <- diamonds %>%
+add_residuals(mod) %>%
+mutate(resid = exp(resid))
+
+ggplot(data = diamonds2) +
+geom_point(mapping = aes(x = carat, y = resid))
+
+ggplot(diamonds2) +
+geom_boxplot(aes(cut, resid))
+```
 
 When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
 
