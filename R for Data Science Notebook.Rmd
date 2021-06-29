@@ -592,6 +592,532 @@ ggplot(diamonds2) +
 geom_boxplot(aes(cut, resid))
 ```
 
+# Data Wrangling: tidy data
+8.2 readr - turning flat files into data frames
+Use skip, comment #, col_names to create column names
+
+```{r}
+read_csv("The first line of metadata
+The second line of metadata
+x,y,z
+1,2,3", skip = 2)
+
+read_csv("# A comment I want to skip
+x,y,z
+1,2,3", comment = "#")
+
+read_csv("1,2,3\n4,5,6", col_names = FALSE)
+
+read_csv("1,2,3\n4,5,6", col_names = c("x", "y", "z"))
+
+read_csv("a,b,c\n1,2,.", na = ".")
+```
+
+8.3 Parsing a vector
+Use parse_*() function to take a character vector an dreturn a specialized vector like a logical, integer or date.
+
+```{r}
+str(parse_logical(c("TRUE", "FALSE", "NA")))
+str(parse_integer(c("1", "2", "3")))
+str(parse_date(c("2010-01-01", "1979-10-14")))
+```
+
+parsing failures:
+
+```{r}
+x <- parse_integer(c("123", "345", "abc", "123.45"))
+x
+problems(x)
+```
+
+8.3.1 Numbers
+3 major problems:
+• People write numbers differently in different parts of the world.
+For example, some countries use . in between the integer and
+fractional parts of a real number, while others use ,.
+
+```{r}
+parse_double("1,23", locale = locale(decimal_mark = ","))
+```
+
+• Numbers are often surrounded by other characters that provide
+some context, like “$1000” or “10%”.
+
+```{r}
+parse_number("$100")
+parse_number("20%")
+parse_number("It cost $123.45")
+```
+
+• Numbers often contain “grouping” characters to make them
+easier to read, like “1,000,000”, and these grouping characters
+vary around the world.
+
+```{r}
+parse_number(
+"123.456.789",
+locale = locale(grouping_mark = ".")
+)
+parse_number(
+"123'456'789",
+locale = locale(grouping_mark = "'")
+)
+```
+
+8.3.2 Strings
+Different character encoding standards are adopted in different locations. 
+specify the encoding in parse_char acter():
+```{r}
+charToRaw("Hadley")
+
+x1 <- "El Ni\xf1o was particularly bad this year"
+x2 <- "\x82\xb1\x82\xf1\x82\xc9\x82\xbf\x82\xcd"
+
+parse_character(x1, locale = locale(encoding = "Latin1"))
+parse_character(x2, locale = locale(encoding = "Shift-JIS"))
+```
+
+8.3.4 Dates, Date-Times, and Times
+
+```{r}
+parse_datetime("2010-10-01T2010")
+parse_datetime("20101010")
+library(hms)
+parse_time("01:10 am")
+parse_time("20:10:01")
+```
+
+8.4 Parsing Files
+guess_parser() = returns readr's guess of character vector type; parse_guess() = uses that guess to parse the column
+
+```{r}
+guess_parser("2010-10-01")
+str(parse_guess("2010-10-10"))
+```
+
+Problems
+• The first thousand rows might be a special case, and readr
+guesses a type that is not sufficiently general. For example, you
+might have a column of doubles that only contains integers in
+the first 1000 rows.
+• The column might contain a lot of missing values. If the first
+1000 rows contain only NAs, readr will guess that it’s a character
+vector, whereas you probably want to parse it as something
+more specific.
+```{r}
+challenge <- read_csv(readr_example("challenge.csv"))
+problems(challenge)
+
+```
+
+Solve the problem by changing column specification.
+
+```{r}
+challenge <- read_csv(
+readr_example("challenge.csv"),
+col_types = cols(
+x = col_double(),
+y = col_date()
+)
+)
+tail(challenge)
+```
+```{r}
+challenge2 <- read_csv(
+readr_example("challenge.csv"),
+guess_max = 1001
+)
+challenge2
+```
+
+```{r}
+challenge2 <- read_csv(readr_example("challenge.csv"),
+col_types = cols(.default = col_character())
+)
+
+df <- tribble(
+~x, ~y,
+"1", "1.21",
+"2", "2.32",
+"3", "4.56"
+)
+df
+type_convert(df)
+```
+Write files
+
+```{r}
+write_csv(challenge, "challenge-2.csv")
+read_csv("challenge-2.csv")
+```
+
+```{r}
+library(feather)
+write_feather(challenge, "challenge.feather")
+read_feather("challenge.feather")
+```
+# Data Tidying With tidyr
+**There are three interrelated rules which make a dataset tidy:**
+1. Each variable must have its own column.
+2. Each observation must have its own row.
+3. Each value must have its own cell.
+
+Problems with real analysis 
+• One variable might be spread across multiple columns.
+• One observation might be scattered across multiple rows.
+
+9.1 Gathering
+9.1.1 A common problem is a dataset where some of the column names are not names of variables, but values of a variable.
+• The set of columns that represent values, not variables. In this
+example, those are the columns 1999 and 2000.
+• The name of the variable whose values form the column names.
+I call that the key, and here it is year.
+• The name of the variable whose values are spread over the cells.
+I call that value, and here it’s the number of cases.
+
+```{r}
+library(tidyr)
+table4a
+table4a %>%
+gather(`1999`, `2000`, key = "year", value = "cases")
+table4b %>%
+gather(`1999`, `2000`, key = "year", value = "population")
+```
+
+9.2 Spreading
+You use it when an observation is scattered across multiple rows.
+• The column that contains variable names, the key column. Here, it’s type.
+• The column that contains values forms multiple variables, the value column. Here, it’s count.
+
+```{r}
+table2
+spread(table2, key = type, value = count)
+```
+
+9.3 Separating and Pull
+table3 has a different problem: we have one column (rate) that contains two variables (cases and population).
+use convert to change data type from default character to others 
+
+```{r}
+table3
+table3 %>%
+separate(rate, into = c("cases", "population"), 
+         convert=TRUE)
+```
+
+Use unite() to combine multiple columns into a single column. Use sep to delete the default _ that is created when combining. 
+```{r}
+table5 %>%
+  unite(new, century, year)
+table5 %>%
+  unite(new, century, year, sep = "")
+```
+
+9.4 Missing Values
+a value can be missing in one of two possible ways:
+• Explicitly, i.e., flagged with NA.
+• Implicitly, i.e., simply not present in the data.
+
+```{r}
+stocks <- tibble(
+year = c(2015, 2015, 2015, 2015, 2016, 2016, 2016),
+qtr = c( 1, 2, 3, 4, 2, 3, 4),
+return = c(1.88, 0.59, 0.35, NA, 0.92, 0.17, 2.66)
+)
+stocks
+```
+
+• The return for the fourth quarter of 2015 is explicitly missing,
+because the cell where its value should be instead contains NA.
+• The return for the first quarter of 2016 is implicitly missing,
+because it simply does not appear in the dataset.
+
+Set implicit missing values to explicit.
+```{r}
+stocks %>%
+spread(year, return)
+stocks %>%
+complete(year, qtr)
+```
+Set implicit missing values to explicit. 
+
+```{r}
+stocks %>%
+spread(year, return) %>%
+gather(year, return, `2015`:`2016`, na.rm = TRUE)
+```
+You can fill in these missing values with fill(). 
+It takes a set of columns where you want missing values to be replaced by the most recent nonmissing value (sometimes called last observation carried forward):
+
+```{r}
+treatment <- tribble(
+~ person, ~ treatment, ~response,
+"Derrick Whitmore", 1, 7,
+NA, 2, 10,
+NA, 3, 9,
+"Katherine Burke", 1, 4
+)
+treatment %>%
+fill(person)
+```
+
+
+# Relational Data with dplyr
+
+```{r}
+library(tidyverse)
+library(nycflights13)
+```
+
+10.1 Keys
+The variables used to connect each pair of tables are called keys. A
+key is a variable (or set of variables) that uniquely identifies an
+observation.
+
+• A primary key uniquely identifies an observation in its own
+table. For example, planes$tailnum is a primary key because it
+uniquely identifies each plane in the planes table.
+• A foreign key uniquely identifies an observation in another
+table. For example, flights$tailnum is a foreign key because it
+appears in the flights table where it matches each flight to a
+unique plane.
+
+Identify primary key and verify it using count() and filter() functions.
+
+```{r}
+
+planes %>%
+count(tailnum) %>%
+filter(n > 1)
+
+flights %>%
+count(year, month, day, flight) %>%
+filter(n > 1)
+```
+
+If a table lacks a primary key, it’s sometimes useful to add one with mutate() and row_number().
+That makes it easier to match observations if you’ve done some filtering and want to check back in with the original data. This is called a surrogate key.
+
+10.2 Mutating Joins
+
+Combine a pair of tables to the right. 
+
+```{r}
+flights2 <- flights %>%
+select(year:day, hour, origin, dest, tailnum, carrier)
+flights2
+
+flights2 %>%
+select(-origin, -dest) %>%
+left_join(airlines, by = "carrier")
+```
+
+```{r}
+x <- tribble(
+~key, ~val_x,
+1, "x1",
+2, "x2",
+3, "x3"
+)
+
+y <- tribble(
+~key, ~val_y,
+1, "y1",
+2, "y2",
+4, "y3"
+)
+```
+
+In an actual join, matches will be indicated with dots. The number of dots = the number of matches = the number of rows in the output.
+
+10.2.1 Inner Join
+* The simplest type of join is the inner join. An inner join matches pairs of observations whenever their keys are equal:
+* The output of an inner join is a new data frame that contains the key, the x values, and the y values. We use by to tell dplyr which variable is the key
+
+```{r}
+x %>%
+inner_join(y, by = "key")
+```
+10.2.2 Outer Joins
+An outer join keeps observations that appear in at least one of the tables.
+• A left join keeps all observations in x.
+• A right join keeps all observations in y.
+• A full join keeps all observations in x and y.
+
+The left join should be your default join: use it unless you have a strong reason to
+prefer one of the others.
+
+10.2.3 Duplicate Keys
+1. One table has duplicate keys. This is useful when you want to
+add in additional information as there is typically a one-tomany
+relationship:
+```{r}
+x <- tribble(
+~key, ~val_x,
+1, "x1",
+2, "x2",
+2, "x3",
+1, "x4"
+)
+y <- tribble(
+~key, ~val_y,
+1, "y1",
+2, "y2"
+)
+left_join(x, y, by = "key")
+```
+
+2. Both tables have duplicate keys. This is usually an error because
+in neither table do the keys uniquely identify an observation.
+When you join duplicated keys, you get all possible combinations,
+the Cartesian product:
+```{r}
+x <- tribble(
+~key, ~val_x,
+1, "x1",
+2, "x2",
+2, "x3",
+3, "x4"
+)
+y <- tribble(
+~key, ~val_y,
+1, "y1",
+2, "y2",
+2, "y3",
+3, "y4"
+)
+left_join(x, y, by = "key")
+```
+10.2.4 Defining the Key Columns
+1. The default, by = NULL, uses all variables that appear in both
+tables, the so-called natural join.
+```{r}
+flights2 %>%
+left_join(weather)
+```
+
+2. A character vector, by = "x". This is like a natural join, but uses
+only some of the common variables.
+
+```{r}
+flights2 %>%
+left_join(planes, by = "tailnum")
+```
+
+3. A named character vector: by = c("a" = "b"). This will match
+variable a in table x to variable b in table y. The variables from x
+will be used in the output.
+
+```{r}
+flights2 %>%
+left_join(airports, c("dest" = "faa"))
+
+flights2 %>%
+left_join(airports, c("origin" = "faa"))
+```
+
+10.2.5 Filtering Joins
+
+Filtering joins match observations in the same way as mutating
+joins, but affect the observations, not the variables. There are two
+types:
+• semi_join(x, y) keeps all observations in x that have a match
+in y.
+• anti_join(x, y) drops all observations in x that have a match
+in y.
+
+```{r}
+top_dest <- flights %>%
+count(dest, sort = TRUE) %>%
+head(10)
+top_dest
+
+flights %>%
+semi_join(top_dest)
+```
+
+10.2.6 Join Problems
+
+1. Start by identifying the variables that form the primary key in
+each table. You should usually do this based on your understanding
+of the data, not empirically by looking for a combination
+of variables that give a unique identifier. 
+
+For example, the altitude and longitude uniquely identify each
+airport, but they are not good identifiers!
+
+2. Check that none of the variables in the primary key are missing.
+If a value is missing then it can’t identify an observation!
+
+3. Check that your foreign keys match primary keys in another
+table. The best way to do this is with an anti_join(). It’s common
+for keys not to match because of data entry errors. Fixing
+these is often a lot of work.
+ 
+If you do have missing keys, you’ll need to be thoughtful about
+your use of inner versus outer joins, carefully considering
+whether or not you want to drop rows that don’t have a match.
+
+10.2.7 Set Operations
+
+The final type of two-table verb are the set operations. All
+these operations work with a complete row, comparing the values of
+every variable. These expect the x and y inputs to have the same
+variables, and treat the observations like sets:
+
+intersect(x, y)
+Return only observations in both x and y.
+union(x, y)
+Return unique observations in x and y.
+setdiff(x, y)
+Return observations in x, but not in y.
+
+```{r}
+df1 <- tribble(
+~x, ~y,
+1, 1,
+2, 1
+)
+df2 <- tribble(
+~x, ~y,
+1, 1,
+1, 2
+)
+
+intersect(df1, df2)
+union(df1, df2)
+setdiff(df1, df2)
+setdiff(df2, df1)
+```
+#Factors with forcrats
+
+12.1 Creating Factors
+
+Factor's advantage over character: sorted in an useful way, spot typos
+** To create a factor you must start by creating a list of the valid levels:
+```{r}
+x1 <- c("Dec", "Apr", "Jan", "Mar")
+month_levels <- c(
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun", 
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+)
+y1 <- factor(x1, levels = month_levels)
+y1
+sort(y1)
+```
+
+Sometimes you’d prefer that the order of the levels match the order of the first appearance in the data. You can do that when creating the factor by setting levels to unique(x), or after the fact, with fct_inorder():
+
+```{r}
+f1 <- factor(x1, levels = unique(x1))
+f1
+f2 <- x1 %>% 
+  factor() %>% 
+  fct_inorder()
+f2
+```
+
+
 When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
 
 The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
