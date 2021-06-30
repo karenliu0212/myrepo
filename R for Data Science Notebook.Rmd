@@ -1250,6 +1250,142 @@ gss_cat %>%
   print(n = Inf)
 ```
 
+#Pipes and functions in R
+1. In pipes, you will dive deep into the pipe, %>%, and learn more about how it works, what the alternatives are, and when not to use it.
+
+2.In functions, you’ll learn how to write functions which let you extract out repeated code so that it can be easily reused.
+
+#Pipes
+It’s time to explore the pipe in more detail. You’ll learn the alternatives to the pipe, when you shouldn’t use the pipe, and some useful related tools.
+```{r}
+library(magrittr)
+```
+Alternatives to pipe
+18.2.1 Intermediate steps
+```{r}
+foo_foo <- little_bunny()
+foo_foo_1 <- hop(foo_foo, through = forest)
+foo_foo_2 <- scoop(foo_foo_1, up = field_mice)
+foo_foo_3 <- bop(foo_foo_2, on = head)
+```
+
+The main downside of this form is that it forces you to name each intermediate element. 
+1. The code is *cluttered with unimportant names*
+2. You have to carefully increment the suffix on each line. *Errors could occur frequently.*
+
+18.2.2 Overwrite the original
+```{r}
+foo_foo <- hop(foo_foo, through = forest)
+foo_foo <- scoop(foo_foo, up = field_mice)
+foo_foo <- bop(foo_foo, on = head)
+```
+
+1. Debugging is painful: if you make a mistake you’ll need to *re-run the complete pipeline from the beginning.* 
+2. The repetition of the object being transformed (we’ve written foo_foo six times!) *obscures what’s changing on each line.*
+
+18.2.3 Function composition
+```{r}
+bop(
+  scoop(
+    hop(foo_foo, through = forest),
+    up = field_mice
+  ), 
+  on = head
+)
+```
+
+Here the disadvantage is that you have to read from inside-out, from right-to-left, and that the arguments end up spread far apart (evocatively called the dagwood sandwhich problem). In short, this code is hard for a human to consume.
+
+18.2.4 Use the pipe
+You can read this series of function compositions like it’s a set of imperative actions.
+Behind the scenes, magrittr reassembles the code in the pipe to a form that works by overwriting an intermediate object. 
+```{r}
+my_pipe <- function(.) {
+  . <- hop(., through = forest)
+  . <- scoop(., up = field_mice)
+  bop(., on = head)
+}
+my_pipe(foo_foo)
+```
+
+Pipe would not work for two classes of functions
+1. Functions that use the current environment. For example, assign() will create a new variable with the given name in the current environment. The use of assign with the pipe does not work because it assigns it to a temporary environment used by %>%.
+Other functions with this problem include get() and load().
+
+
+**2. Functions that use lazy evaluation. In R, function arguments are only computed when the function uses them, not prior to calling the function. The pipe computes each element in turn, so you can’t rely on this behaviour.** Not sure if I understood this type of functions? Why are they called lazy evaluation?
+
+One place that this is a problem is tryCatch(), which lets you capture and handle errors:
+
+```{r}
+tryCatch(stop("!"), error = function(e) "An error")
+#> [1] "An error"
+
+stop("!") %>% 
+  tryCatch(error = function(e) "An error")
+#> Error in eval(lhs, parent, parent): !
+```
+There are a relatively wide class of functions with this behaviour, including try(), suppressMessages(), and suppressWarnings() in base R.
+
+18.3 When not to use the pipe 
+
+Pipes are most useful for rewriting a fairly short linear sequence of operations. I think you should reach for another tool when:
+
+* Your pipes are longer than (say) ten steps. In that case, create intermediate objects with meaningful names.
+
+* You have multiple inputs or outputs. If there isn’t one primary object being transformed, but two or more objects being combined together, don’t use the pipe.
+
+* You are starting to think about a directed graph with a complex dependency structure.Pipes are fundamentally linear. 
+
+18.4 Other types of pipe
+1. %T>%
+To work around this problem, you can use the “tee” pipe. %T>% works like %>% except that it returns the left-hand side instead of the right-hand side. It’s called “tee” because it’s like a literal T-shaped pipe.
+*Not sure what it means by left-hand side vs right-hand side.*
+
+2. %$%
+If you’re working with functions that don’t have a data frame based API. It “explodes” out the variables in a data frame so that you can refer to them explicitly. This is useful when working with many functions in base R:
+```{r}
+mtcars %$%
+  cor(disp, mpg)
+```
+
+3. %<>%
+For assignment magrittr provides the %<>% operator which allows you to replace code like:
+```{r}
+mtcars %<>% transform(cyl = cyl * 2)
+```
+
+# Functions
+<Three advantages with functions>
+* Reuse - They are easy to reuse. If an update to the code is necessary, you revise it in one location and the changes propogate to all over components that implement the function.
+
+* Self-defined - They are self-documenting. Give your function a good name and you will easily remember the function and its purpose.
+
+* Debug - They are easy-ier to debug. There are fewer chances to make mistakes because the code only exists in one location. When copying and pasting, you may forget to copy an important line or fail to update a line in one location.
+
+19.2
+A function contains:
+1. A name. This should be informative and describe what the function does.
+
+2. The arguments, or list of inputs, to the function. They go inside the parentheses in function().
+
+3. The body. This is the block of code within {} that immediately follows function(...), and is the code that you developed to perform the action described in the name using the arguments you provide.
+
+```{r}
+rescale01 <- function(x) {
+  rng <- range(x, na.rm = TRUE)
+  (x - rng[1]) / (rng[2] - rng[1])
+}
+
+```
+name: rescale01 - rescale any variable to the value from 0 to 1.
+argument: x 
+body: rng(), subtract min from x to divide by (max-min)
+
+
+Objects created within a function are destroyed once the function completes its execution, unless you return the object as part of the output. This is why you do not see hypotenuse listed in the environment - it has already been destroyed.
+
+
 When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
 
 The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
