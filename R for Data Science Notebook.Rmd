@@ -1255,7 +1255,7 @@ gss_cat %>%
 
 2.In functions, you’ll learn how to write functions which let you extract out repeated code so that it can be easily reused.
 
-#Pipes
+#Pipes (Chapter 18)
 It’s time to explore the pipe in more detail. You’ll learn the alternatives to the pipe, when you shouldn’t use the pipe, and some useful related tools.
 ```{r}
 library(magrittr)
@@ -1281,7 +1281,7 @@ foo_foo <- bop(foo_foo, on = head)
 ```
 
 1. Debugging is painful: if you make a mistake you’ll need to *re-run the complete pipeline from the beginning.* 
-2. The repetition of the object being transformed (we’ve written foo_foo six times!) *obscures what’s changing on each line.*
+2. The repetition of the object being transformed (we’ve written foo_foo six times!) *obscures what’s changing on each line. Ambiguity on what the data frame actually contains*
 
 18.2.3 Function composition
 ```{r}
@@ -1355,7 +1355,7 @@ For assignment magrittr provides the %<>% operator which allows you to replace c
 mtcars %<>% transform(cyl = cyl * 2)
 ```
 
-# Functions
+# Functions (Chapter 19)
 <Three advantages with functions>
 * Reuse - They are easy to reuse. If an update to the code is necessary, you revise it in one location and the changes propogate to all over components that implement the function.
 
@@ -1363,7 +1363,8 @@ mtcars %<>% transform(cyl = cyl * 2)
 
 * Debug - They are easy-ier to debug. There are fewer chances to make mistakes because the code only exists in one location. When copying and pasting, you may forget to copy an important line or fail to update a line in one location.
 
-19.2
+19.2 Function components
+
 A function contains:
 1. A name. This should be informative and describe what the function does.
 
@@ -1382,13 +1383,603 @@ name: rescale01 - rescale any variable to the value from 0 to 1.
 argument: x 
 body: rng(), subtract min from x to divide by (max-min)
 
-
 Objects created within a function are destroyed once the function completes its execution, unless you return the object as part of the output. This is why you do not see hypotenuse listed in the environment - it has already been destroyed.
 
+There is some duplication in this code. We’re computing the range of the data three times, so it makes sense to do it in one step:
+```{r}
+x <- df$a
+(x - min(x, na.rm = TRUE)) / (max(x, na.rm = TRUE) - min(x, na.rm = TRUE))
+rng <- range(x, na.rm = TRUE)
+(x - rng[1]) / (rng[2] - rng[1])
 
+rescale01 <- function(x) {
+  rng <- range(x, na.rm = TRUE)
+  (x - rng[1]) / (rng[2] - rng[1])
+}
+rescale01(c(0, 5, 10))
+```
+
+Another advantage of functions is that if our requirements change, we only need to make the change in one place. 
+
+```{r}
+# For example, we might discover that some of our variables include infinite values, and rescale01() fails:
+x <- c(1:10, Inf)
+rescale01(x)
+#>  [1]   0   0   0   0   0   0   0   0   0   0 NaN
+
+rescale01 <- function(x) {
+  rng <- range(x, na.rm = TRUE, finite = TRUE)
+  (x - rng[1]) / (rng[2] - rng[1])
+}
+rescale01(x)
+#>  [1] 0.0000000 0.1111111 0.2222222 0.3333333 0.4444444 0.5555556 0.6666667
+#>  [8] 0.7777778 0.8888889 1.0000000       Inf
+```
+
+19.3 Functions are for humans
+1. Generally, function names should be verbs, and arguments should be nouns. 
+2. A good sign that a noun might be a better choice is if you’re using a very broad verb like “get”, “compute”, “calculate”, or “determine”. 
+3. If your function name is composed of multiple words, I recommend using “snake_case”, where each lowercase word is separated by an underscore. 
+
+19.4 Conditional Execution
+
+Sometimes you only want to execute code if a condition is met. To do that, use an if-else statement.
+
+```{r}
+if (condition) {
+  # code executed when condition is TRUE
+} else {
+  # code executed when condition is FALSE
+}
+
+```
+
+19.4.2 Conditions
+The condition must evaluate to either TRUE or FALSE. If it’s a vector, you’ll get a warning message; if it’s an NA, you’ll get an error. Watch out for these messages in your own code:
+```{r}
+if (c(TRUE, FALSE)) {}
+#> Warning in if (c(TRUE, FALSE)) {: the condition has length > 1 and only the
+#> first element will be used
+#> NULL
+
+if (NA) {}
+#> Error in if (NA) {: missing value where TRUE/FALSE needed
+```
+You can use || (or) and && (and) to combine multiple logical expressions. These operators are “short-circuiting”: as soon as || sees the first TRUE it returns TRUE without computing anything else. As soon as && sees the first FALSE it returns FALSE. You should never use | or & in an if statement: these are vectorised operations that apply to multiple values (that’s why you use them in filter()). If you do have a logical vector, you can use any() or all() to collapse it to a single value.
+
+Be careful when testing for equality. == is vectorised, which means that it’s easy to get more than one output. Either check the length is already 1, collapse with all() or any(), or use the non-vectorised identical(). identical() is very strict: it always returns either a single TRUE or a single FALSE, and doesn’t coerce types. This means that you need to be careful when comparing integers and doubles:
+
+*Question: how do we use these combined multiple logical expressions and what do they mean?*
+
+19.4.3 Multiple conditions
+Chain conditional statements
+```{r}
+if (this) {
+  # do that
+} else if (that) {
+  # do something else
+} else {
+  # do something completely different
+}
+```
+
+When multiple conditions are required, use switch()
+```{r}
+four <-function(x, y, op) {
+  switch(op,
+plus = x + y,
+minus = x - y,
+times = x * y,
+divide = x / y,
+stop("Unknown op!")
+  )}
+
+four(10,5,"plus")
+
+```
+
+It’s ok to drop the curly braces if you have a very short if statement that can fit on one line:
+
+```{r}
+y <- 10
+x <- if (y < 20) "Too low" else "Too high"
+
+if (y < 20) {
+  x <- "Too low" 
+} else {
+  x <- "Too high"
+}
+```
+
+Convert continuous variable into categorical, use cut(breaks)
+```{r}
+penguins %>%
+  select(body_mass_g) %>%
+  mutate(
+    body_mass_g_autobin = cut(body_mass_g, breaks = 5),
+    body_mass_g_manbin = cut(body_mass_g,
+      breaks = c(2700, 3600, 4500, 5400, 6300),
+      labels = c("Small", "Medium", "Large", "Huge")
+    )
+  )
+```
+
+Because if-else conditional statements like the ones outlined above must always resolve to a single TRUE or FALSE, they cannot be used for vector operations.
+Vector operations are where you make multiple comparisons simultaneously for each value stored inside a vector. 
+```{r}
+library(rcfss)
+library(tidyverse)
+data("gun_deaths")
+(educ <- select(gun_deaths, education))
+(educ_if <- educ %>%
+  mutate(hsPlus = if (education == "Less than HS") {
+    "Less than HS"
+  } else {
+    "HS+"
+  }))
+```
+This did not work correctly. Because if() can only handle a single TRUE/FALSE value, it only checked the first row of the data frame. That row contained “BA+” for the individual, so it generated a vector of length 100798 with each value being “HS+”.
+
+we should instead use if_else(). This vectorizes the if-else comparison and makes a separate comparison for each row of the data frame. This allows us to correctly generate this new column.
+```{r}
+(educ_ifelse <- educ %>%
+  mutate(hsPlus = if_else(education == "Less than HS", "Less than HS", "HS+")))
+```
+
+19.5 Function arguments
+1. data argument -to comupte on
+2. detail argument -control the details of the computation
+
+Generally, data arguments should come first. Detail arguments should go on the end, and usually should have default values. You specify a default value in the same way you call a function with a named argument:
+
+```{r}
+# Compute confidence interval around mean using normal approximation
+mean_ci <- function(x, conf = 0.95) {
+  se <- sd(x) / sqrt(length(x))
+  alpha <- 1 - conf
+  mean(x) + se * qnorm(c(alpha / 2, 1 - alpha / 2))
+}
+
+x <- runif(100)
+mean_ci(x)
+#> [1] 0.4976111 0.6099594
+mean_ci(x, conf = 0.99)
+#> [1] 0.4799599 0.6276105
+```
+
+
+#How to read R help page
+
+Remember, functions take inputs, perform actions, and return outputs. Something goes in, it gets worked on, and then something comes out. That means you want to know what the function requires, what it does, and what it returns.
 When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+1) Usage and Argument: 
+Some arguments have default values. In the case of the mean() function the argument na.rm is set to FALSE by default. These will be shown in the Usage section. If a named argument has no default, you will have to give it a value. Depending on what the argument is, this might be a logical value, a number, a dataset, or any other object.
+
+2) The other part to look at closely is the Value section, which tells you what the function returns once it has done its calculation. this might simply be a single number or other short bit of output. But it could also be something as complex as a ggplot figure or a model object consisting of many separate parts organized as a list.
+
+#The basics of accessing and selecting things
+
+```{r}
+my_numbers <- c(1, 2, 3, 1, 3, 5, 25)
+your_numbers <- c(5, 31, 71, 1, 3, 21, 6)
+```
+
+To access any particular element in my_numbers, we use square brackets. Square brackets are not like the parentheses after functions. They are used to pick out an element indexed by its position:
+
+```{r}
+my_numbers[4]
+## [1] 1
+my_numbers[7]
+## [1] 25
+```
+
+We index data frames, tibbles, and other arrays by row first, and then by column. Arrays may also have more than two dimensions.
+```{r}
+my_tb <- tibble(
+    mine = c(1,4,5, 8:11),
+    yours = c(3,20,16, 34:31))
+
+class(my_tb)
+my_tb[3,1] # Row 3 Col 1
+## # A tibble: 1 x 1
+##    mine
+##   <dbl>
+## 1  5.00
+my_tb[1,2] # Row 1, Col 2 
+## # A tibble: 1 x 1
+##   yours
+##   <dbl>
+## 1  3.00
+```
+
+If we want to get all the elements of a particular column, we can leave out the row index. This will mean all the rows will be included for whichever column we select.
+```{r}
+my_tb[,"mine"] # All rows, Col 1
+```
+
+Use function to perform repeated tasks.
+
+Functions can take many kinds of arguments, and we can also tell them what the default value of each argument should be by specifying it inside the function(...) section. Functions are little programs that have all the power of R at their disposal, including standard things like flow-control through if ... else statements and so on. Here, for instance, is a function that will make a scatter plot for any Section in the ASA data, or optionally fit a smoother to the data and plot that instead. Defining a function looks a little like calling one, except that we spell out the steps inside. We also specify the default arguments.
+
+```{r}
+plot_section <- function(section="Culture", x = "Year",
+                         y = "Members", data = asasec,
+                         smooth=FALSE){
+    require(ggplot2)
+    require(splines)
+    # Note use of aes_string() rather than aes() 
+    p <- ggplot(subset(data, Sname==section),
+            mapping = aes_string(x=x, y=y))
+
+    if(smooth == TRUE) {
+        p0 <- p + geom_smooth(color = "#999999",
+                              size = 1.2, method = "lm",
+                              formula = y ~ ns(x, 3)) +
+            scale_x_continuous(breaks = c(seq(2005, 2015, 4))) +
+            labs(title = section)
+    } else {
+    p0 <- p + geom_line(color= "#E69F00", size=1.2) +
+        scale_x_continuous(breaks = c(seq(2005, 2015, 4))) +
+        labs(title = section)
+    }
+
+    print(p0)
+}
+```
+
+
+# R Markdown Structure
+
+27.3 Text formatting with Markdown
+
+First Header  | Second Header | Third Header
+------------- | ------------- |--------------
+Content Cell  | Content Cell  |Content Cell
+Content Cell  | Content Cell  |Content Cell
+
+27.4.1 Chunk name
+```{r mean function} 
+x <- c(1:10)
+mean(x)
+```
+
+27.4.2 Chunk options
+
+* eval = FALSE prevents code from being evaluated. (And obviously if the code is not run, no results will be generated). This is useful for displaying example code, or for disabling a large block of code without commenting each line.
+
+* include = FALSE runs the code, but doesn’t show the code or results in the final document. Use this for setup code that you don’t want cluttering your report.
+
+* echo = FALSE prevents code, but not the results from appearing in the finished file. Use this when writing reports aimed at people who don’t want to see the underlying R code.
+
+* message = FALSE or warning = FALSE prevents messages or warnings from appearing in the finished file.
+
+* results = 'hide' hides printed output; fig.show = 'hide' hides plots.
+
+* error = TRUE causes the render to continue even if code returns an error. This is rarely something you’ll want to include in the final version of your report, but can be very useful if you need to debug exactly what is going on inside your .Rmd. It’s also useful if you’re teaching R and want to deliberately include an error. The default, error = FALSE causes knitting to fail if there is a single error in the document.
+
+27.4.3 Caching
+
+However, it can be painful if you have some computations that take a long time. The solution is cache = TRUE. When set, this will save the output of the chunk to a specially named file on disk. On subsequent runs, knitr will check to see if the code has changed, and if it hasn’t, it will reuse the cached results.
+
+The caching system must be used with care, because by default it is based on the code only, not its dependencies. For example, here the processed_data chunk depends on the raw_data chunk:
+
+```{r raw_data}
+rawdata <- readr::read_csv("a_very_large_file.csv")
+```
+
+```{r processed_data, cache = TRUE}
+processed_data <- rawdata %>% 
+  filter(!is.na(import_var)) %>% 
+  mutate(new_variable = complicated_transformation(x, y, z))
+```
+Caching the processed_data chunk means that it will get re-run if the dplyr pipeline is changed, but it won’t get rerun if the read_csv() call changes. You can avoid that problem with the dependson chunk option:
+
+```{r processed_data, cache = TRUE, dependson = "raw_data"}
+processed_data <- rawdata %>% 
+  filter(!is.na(import_var)) %>% 
+  mutate(new_variable = complicated_transformation(x, y, z))
+```
+
+27.6 YAML header
+
+“yet another markup language”, which is designed for representing hierarchical data in a way that’s easy for humans to read and write.
+
+27.6.1
+R Markdown documents can include one or more parameters whose values can be set when you render the report. Parameters are useful when you want to re-render the same report with distinct values for various key inputs. For example, you might be producing sales reports per branch, exam results by student, or demographic summaries by country. To declare one or more parameters, use the params field.
+
+```{r}
+---
+output: html_document
+params:
+  my_class: "suv"
+---
+```
+
+```{r , include = FALSE}
+library(ggplot2)
+library(dplyr)
+
+class <- mpg %>% filter(class == params$my_class)
+```
+
+# Fuel economy for `r params$my_class`s
+
+```{r, message = FALSE}
+ggplot(class, aes(displ, hwy)) + 
+  geom_point() + 
+  geom_smooth(se = FALSE)
+```
+
+Alternatively, if you need to produce many such parameterised reports, you can call rmarkdown::render() with a list of params:
+```{r}
+rmarkdown::render("fuel-economy.Rmd", params = list(my_class = "suv"))
+```
+
+This is particularly powerful in conjunction with purrr:pwalk(). The following example creates a report for each value of class found in mpg. First we create a data frame that has one row for each class, giving the filename of the report and the params:
+```{r}
+reports <- tibble(
+  class = unique(mpg$class),
+  filename = stringr::str_c("fuel-economy-", class, ".html"),
+  params = purrr::map(class, ~ list(my_class = .))
+)
+reports
+#> # A tibble: 7 x 3
+#>   class   filename                  params          
+#>   <chr>   <chr>                     <list>          
+#> 1 compact fuel-economy-compact.html <named list [1]>
+#> 2 midsize fuel-economy-midsize.html <named list [1]>
+#> 3 suv     fuel-economy-suv.html     <named list [1]>
+#> 4 2seater fuel-economy-2seater.html <named list [1]>
+#> 5 minivan fuel-economy-minivan.html <named list [1]>
+#> 6 pickup  fuel-economy-pickup.html  <named list [1]>
+#> # … with 1 more row
+```
+
+Then we match the column names to the argument names of render(), and use purrr’s parallel walk to call render() once for each row:
+
+```{r}
+reports %>% 
+  select(output_file = filename, params) %>% 
+  purrr::pwalk(rmarkdown::render, input = "fuel-economy.Rmd")
+```
+
+#Graphics for Communication (Chapter 28)
+
+28.2 Label
+
+It’s possible to use mathematical equations instead of text strings. Just switch "" out for quote() and read about the available options in ?plotmath:
+
+```{r}
+df <- tibble(
+  x = runif(10),
+  y = runif(10)
+)
+ggplot(df, aes(x, y)) +
+  geom_point() +
+  labs(
+    x = quote(sum(x[i] ^ 2, i == 1, n)),
+    y = quote(alpha + beta + frac(delta, theta))
+  )
+```
+
+28.3 Annotations
+
+```{r}
+library(tidyverse)
+```
+
+
+it’s often useful to label individual observations or groups of observations. 
+The first tool you have at your disposal is geom_text(). geom_text() is similar to geom_point(), but it has an additional aesthetic: label. This makes it possible to add textual labels to your plots.
+```{r}
+best_in_class <- mpg %>%
+  group_by(class) %>%
+  filter(row_number(desc(hwy)) == 1)
+
+ggplot(mpg, aes(displ, hwy)) +
+  geom_point(aes(colour = class)) +
+  geom_text(aes(label = model), data = best_in_class)
+```
+
+This is hard to read because the labels overlap with each other, and with the points. We can make things a little better by switching to geom_label() which draws a rectangle behind the text. We also use the nudge_y parameter to move the labels slightly above the corresponding points:
+
+```{r}
+ggplot(mpg, aes(displ, hwy)) +
+  geom_point(aes(colour = class)) +
+  geom_label(aes(label = model), data = best_in_class, nudge_y = 2, alpha = 0.5)
+```
+
+That helps a bit, but if you look closely in the top-left hand corner, you’ll notice that there are two labels practically on top of each other. This happens because the highway mileage and displacement for the best cars in the compact and subcompact categories are exactly the same. There’s no way that we can fix these by applying the same transformation for every label. Instead, we can use the ggrepel package by Kamil Slowikowski. This useful package will automatically adjust labels so that they don’t overlap:
+
+```{r}
+ggplot(mpg, aes(displ, hwy)) +
+  geom_point(aes(colour = class)) +
+  geom_point(size = 3, shape = 1, data = best_in_class) +
+  ggrepel::geom_label_repel(aes(label = model), data = best_in_class)
+```
+You can replace legend with labels in the plot:
+
+```{r}
+class_avg <- mpg %>%
+  group_by(class) %>%
+  summarise(
+    displ = median(displ),
+    hwy = median(hwy)
+  )
+#> `summarise()` ungrouping output (override with `.groups` argument)
+
+ggplot(mpg, aes(displ, hwy, colour = class)) +
+  ggrepel::geom_label_repel(aes(label = class),
+    data = class_avg,
+    size = 6,
+    label.size = 0,
+    segment.color = NA
+  ) +
+  geom_point() +
+  theme(legend.position = "none")
+```
+Alternatively, you might just want to add a single label to the plot, but you’ll still need to create a data frame. Often, you want the label in the corner of the plot, so it’s convenient to create a new data frame using summarise() to compute the maximum values of x and y.
+
+```{r}
+label <- mpg %>%
+  summarise(
+    displ = max(displ),
+    hwy = max(hwy),
+    label = "Increasing engine size is \nrelated to decreasing fuel economy."
+  )
+
+ggplot(mpg, aes(displ, hwy)) +
+  geom_point() +
+  geom_text(aes(label = label), data = label, vjust = "top", hjust = "right")
+```
+
+Note the use of hjust and vjust to control the alignment of the label. Figure 28.1 shows all nine possible combinations.
+
+Use geom_hline() and geom_vline() to add reference lines. I often make them thick (size = 2) and white (colour = white), and draw them underneath the primary data layer. That makes them easy to see, without drawing attention away from the data.
+
+In addition to geom_text(), you have several options to create annotations:
+* Use geom_rect() to draw a rectangle around points of interest. The boundaries of the rectangle are defined by aesthetics xmin, xmax, ymin, ymax.
+
+* Use geom_segment() with the arrow argument to draw attention to a point with an arrow. Use aesthetics x and y to define the starting location, and xend and yend to define the end location.
+
+28.4 Scales
+
+```{r}
+presidential %>%
+  mutate(id = 33 + row_number()) %>%
+  ggplot(aes(start, id)) +
+    geom_point() +
+    geom_segment(aes(xend = end, yend = id)) +
+    scale_x_date(NULL, breaks = presidential$start, date_labels = "'%y")
+```
+
+To control the display of individual legends, use guides() along with guide_legend() or guide_colourbar(). The following example shows two important settings: controlling the number of rows the legend uses with nrow, and overriding one of the aesthetics to make the points bigger. This is particularly useful if you have used a low alpha to display many points on a plot.
+
+```{r}
+ggplot(mpg, aes(displ, hwy)) +
+  geom_point(aes(colour = class)) +
+  geom_smooth(se = FALSE) +
+  theme(legend.position = "bottom") +
+  guides(colour = guide_legend(nrow = 1, override.aes = list(size = 4)))
+#> `geom_smooth()` using method = 'loess' and formula 'y ~ x'
+```
+28.5 Replacing a scale
+
+There are two types of scales you’re mostly likely to want to switch out: continuous position scales and colour scales. Fortunately, the same principles apply to all the other aesthetics, so once you’ve mastered position and colour, you’ll be able to quickly pick up other scale replacements.
+
+It’s very useful to plot transformations of your variable. the disadvantage of this transformation is that the axes are now labelled with the transformed values, making it hard to interpret the plot. Instead of doing the transformation in the aesthetic mapping, we can instead do it with the scale. 
+ 
+```{r}
+ggplot(diamonds, aes(carat, price)) +
+  geom_bin2d() + 
+  scale_x_log10() + 
+  scale_y_log10()
+```
+
+
+28.5.2 Change color scale using scale_color_brewer()
+
+The default categorical scale picks colours that are evenly spaced around the colour wheel. Useful alternatives are the ColorBrewer scales which have been hand tuned to work better for people with common types of colour blindness. 
+```{r}
+ggplot(mpg, aes(displ, hwy)) +
+  geom_point(aes(color = drv))
+
+ggplot(mpg, aes(displ, hwy)) +
+  geom_point(aes(color = drv)) +
+  scale_colour_brewer(palette = "Set1")
+```
+When you have a predefined mapping between values and colours, use scale_colour_manual(). For example, if we map presidential party to colour, we want to use the standard mapping of red for Republicans and blue for Democrats:
+
+```{r}
+presidential %>%
+  mutate(id = 33 + row_number()) %>%
+  ggplot(aes(start, id, colour = party)) +
+    geom_point() +
+    geom_segment(aes(xend = end, yend = id)) +
+    scale_colour_manual(values = c(Republican = "red", Democratic = "blue"))
+```
+28.6 Themes
+There are eight themes to figures
+```{r}
+theme_bw()
+theme_classic()
+theme_gray()
+theme_light()
+theme_linedraw()
+theme_minimal()
+theme_void()
+theme_dark()
+```
+
+28.7 Saving Figures
+
+28.7.1 figure sizing
+
+fig.width - width of figure in R
+fig.asp - ratio of height to width
+out.width - percentage of figure width to line length in document
+
+If fig.width is larger than the size the figure is rendered in the final doc, the text will be too small; if fig.width is smaller, the text will be too big. 
+
+If you want to make sure the font size is consistent across all your figures, whenever you set out.width, you’ll also need to adjust fig.width to maintain the same ratio with your default out.width. For example, if your default fig.width is 6 and out.width is 0.7, when you set out.width = "50%" you’ll need to set fig.width to 4.3 (6 * 0.5 / 0.7).
 
 The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
 
 
+# Machine Learning
+## The basics of statistics learning
+
+1. Parametric vs. Non-parametric methods 
+We demonstrated this previously with ordinary least squares. The estimation procedure minimizes the sum of the squares of the differences between the observed responses Y and those predicted by a linear function Y hat.
+This is only one possible estimation procedure, but is popular because it is relatively intuitive. This model-based approach is referred to as parametric, because it simplifies the problem of estimating  to estimating a set of parameters in the function: Y = B0 + B1 * X
+
+One non-parametric method is called K-nearest neighbors regression (KNN regression). Rather than binning the data into discrete and fixed intervals, KNN regression uses a moving average to generate the regression line. Given a value for K and a prediction point X0, KNN regression identifies the  observations closest to the prediction point X0, and estimates a local regression line that is the average of these observations values for the outcome Y.
+
+2. Classification vs. Regression
+Problems with a quantitative dependent variable are typically called regression problems, whereas qualitative dependent variables are called classification problems. Part of this distinction is merely semantic, but different methods may be employed depending on the type of response variable. 
+That said, whether predictors are qualitative or quantitative is not important in determining whether the problem is one of regression or classification.
+
+## Build a linear model
+tidymodels is a collection of packages for statistical modeling and machine learning using tidyverse principles. Given this emphasis, it pairs nicely with the tidy-centric approach we have covered so far for tasks such as data visualization, data wrangling, importation of data files, and publishing results.
+
+```{r}
+install.packages("tidymodels")
+library(tidymodels)
+library(tidyverse)
+library(rcfss)
+library(rstanarm)
+library(broom.mixed)
+
+set.seed(123)
+theme_set(theme_minimal())
+```
+
+1. Build and fit a model
+
+```{r}
+lm_mod <- linear_reg() %>%
+  set_engine("lm")
+
+lm_fit <- lm_mod %>%
+  fit(avgfacsal ~ cost * type, data = scorecard) #specify an R formula for regression predictors & respondents
+lm_fit
+
+tidy(lm_fit)
+```
+
+
+
+# Getting Data from the Web
+
+## API access 
+Load the required packages 
+
+```{r}
+sharknado_df <- content(sharknado) %>%
+  as_tibble()
+sharknado_df
+
+
+```
 
